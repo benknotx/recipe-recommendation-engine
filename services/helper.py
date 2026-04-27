@@ -1,3 +1,14 @@
+from fastapi import APIRouter
+from services.redis_service import redis_client
+import requests
+import os
+import dotenv
+from loguru import logger
+dotenv.load_dotenv()
+Spoon_KEY = os.getenv('SPOON_KEY')
+
+URL = "https://api.spoonacular.com/recipes/complexSearch"
+
 
 
 def ingredient_normalization(ingredients):
@@ -22,3 +33,35 @@ def goal_normalization_for_complex(goal):
     }
     #we could also sort by diet name type such as keto, vegetarian, vegan, etc but for now we will focus on the macronutrient goals
     return goal_mapping.get(goal, None)
+
+
+def health():
+    status = {"API": "OK",
+              "REDIS": "OK",
+              "SPOONACULAR": "OK"  }
+    try: 
+        redis_client.ping()
+        status["REDIS"] = "OK"
+    except Exception as e:
+        logger.error(f"Redis health check failed: {e}")
+        status["REDIS"] = "DOWN"
+    try:
+        response = requests.get(
+            URL,
+            params={
+                "apiKey": Spoon_KEY,
+                "number": 1
+            },
+            timeout=3
+        )
+        if response.status_code == 200:
+            status["SPOONACULAR"] = "OK"
+        else:
+            status["SPOONACULAR"] = "degraded"
+    except Exception as e:
+        logger.error(f"Spoonacular health check failed: {e}")
+        status["SPOONACULAR"] = "down"
+    
+    logger.info(f"status = {status}")
+    return status
+

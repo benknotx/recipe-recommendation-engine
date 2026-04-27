@@ -8,7 +8,8 @@ A FastAPI-based backend API that recommends recipes based on user ingredients an
 - Dietary goal filtering (high protein, low carb, low fat, balanced)
 - Custom scoring algorithm (ingredient match + nutrition alignment)
 - Ingredient substitution suggestions
-- In-memory caching layer to minimize external API usage and mitigate rate limits
+- Redis-based caching layer with TTL to minimize external API usage and comply with rate limits
+- RESTful API design using query parameters for search endpoints
 - Detailed recipe instructions and nutrition data
 - Structured logging via Loguru for debugging and observability
 
@@ -17,14 +18,7 @@ A FastAPI-based backend API that recommends recipes based on user ingredients an
 Get recipe recommendations based on ingredients and a dietary goal:
 
 ```bash
-POST /recipes
-```
-
-```json
-{
-  "ingredients": ["chicken", "rice", "broccoli"],
-  "goal": "high_protein"
-}
+GET recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=broccoli
 ```
 
 ```json
@@ -120,27 +114,22 @@ curl http://localhost:8000/health
 **Response:**
 ```json
 {
-  "status": "ok"
+  "API": "OK",
+  "REDIS": "OK",
+  "SPOONACULAR": "OK"
 }
 ```
 
 ### Get Recipes by Ingredients
 
-**GET** `/recipes`
+**GET** /recipes/recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=broccoli`
 
 Find recipes based on available ingredients and dietary goal.
 
-**Request Body:**
-```json
-{
-  "ingredients": ["chicken", "tomato", "pasta"],
-  "goal": "high_protein"
-}
-```
+**Query Parameters:**
+- `ingredients` (required): Repeated query parameter (e.g., `ingredients=chicken&ingredients=rice`)
+- `goal` (required): Dietary goal (`high_protein`, `low_carb`, `low_fat`, `balanced`)
 
-**Parameters:**
-- `ingredients` (required): List of ingredient strings
-- `goal` (optional): Dietary goal. Valid options: `high_protein`, `low_carb`, `low_fat`, `balanced` (default: `balanced`)
 
 **Response:**
 ```json
@@ -164,16 +153,9 @@ Find recipes based on available ingredients and dietary goal.
 
 ### Get Recipes by Goal
 
-**GET** `/recipes/goal`
+**GET** `/recipes?goal=low_carb`
 
 Get recipes filtered by dietary goal (regardless of ingredients).
-
-**Request Body:**
-```json
-{
-  "goal": "low_carb"
-}
-```
 
 **Response:** Same as `/recipes` endpoint
 
@@ -234,17 +216,17 @@ If no ingredients are provided:
 
 ## 💾 Caching Strategy
 
-The API uses intelligent in-memory caching to optimize performance and manage API rate limits:
+The API uses Redis-based caching to optimize performance and manage external API rate limits.
 
-- **Cache Expiration**: 1 hour (3600 seconds)
-- **Max Cache Size**: 100 entries
+- **Cache Backend**: Redis (in-memory data store)
+- **Cache Expiration**: 1 hour (3600 seconds) to comply with Spoonacular API terms
+- **Key Strategy**: Normalized ingredient lists + dietary goal
 - **Filtering**: Common pantry items (oil, salt, pepper, sugar, flour, water, butter) are excluded from cache keys to improve hit rates
-- **Automatic Cleanup**: Expired and oversized entries are automatically removed
 
 ### Cache Behavior
 - Cache hits significantly reduce API calls to Spoonacular
-- Misses trigger fresh API calls and cache updates
-- Size-based eviction removes oldest entries when limit is exceeded
+- Cache misses trigger fresh API calls and cache updates
+- TTL-based expiration ensures compliance with third-party API constraints
 
 ## 📁 Project Structure
 
@@ -269,6 +251,9 @@ Create a `.env` file with:
 
 ```env
 SPOON_KEY=your_spoonacular_api_key_here
+SPOON_HOST=api.spoonacular.com
+REDIS_HOST=localhost
+REDIS_PORT= 6379
 ```
 
 ## 📊 Dependencies
@@ -282,9 +267,9 @@ SPOON_KEY=your_spoonacular_api_key_here
 
 ## 🔄 Request Flow
 ```
-Client → FastAPI Endpoint → Cache Check  
+Client → FastAPI Endpoint → Redis Cache Check  
            ↓ miss  
-        Spoonacular API → Normalize → Score → Cache → Response
+        Spoonacular API → Normalize → Score → Redis Cache → Response
 ```
 ## 🎯 Use Cases
 
@@ -295,7 +280,8 @@ Client → FastAPI Endpoint → Cache Check
 
 ## 🧠 Key Design Decisions
 
-- In-memory caching used in V1 for simplicity; designed to be replaced with Redis in V2
+- Redis caching used for TTL-based, distributed cache management
+- Designed to comply with third-party API constraints (1-hour storage limit)
 - Chose synchronous requests in V1 for simplicity; async considered for V2 performance improvements
 - Local scoring system used instead of relying solely on external API ranking
 - Separation of concerns via service layer architecture
@@ -310,20 +296,20 @@ This project minimizes usage by:
 - Avoiding duplicate nutrition calls
 - Using bulk endpoints where possible
 
+## ⚡ Performance Improvements
+- Eliminated redundant external API calls using Redis caching
+- Reduced N+1 request pattern by leveraging bulk endpoints
+- Improved response consistency through data normalization
+
 Future improvement:
 - Replace per-recipe nutrition calls with bulk nutrition endpoints
 
 ## 🚀 Future Enhancements
 
-- Redis-based caching (replace in-memory for distributed systems)
-- Async API calls for improved performance
-- Hybrid ingredient + goal search optimization
-- Improved scoring algorithm with user feedback
-- User preferences and saved recipes
-- Rate limiting implementation
-- API documentation (Swagger/OpenAPI)
-- Unit and integration tests
-- Docker containerization
+- Async API calls for improved performance (httpx + asyncio)
+- Docker containerization for reproducible environments
+- Database layer for storing user inputs (not third-party data)
+- Rate limiting to protect API endpoints
 
 ## 📝 License
 

@@ -23,7 +23,6 @@ class recipe_request(BaseModel):
     goal: str = "balanced"
 
 class substitute_response(BaseModel):
-    ingredient: str
     substitutes: list[str]
 
 class recipe_instructions_response(BaseModel):
