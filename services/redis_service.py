@@ -10,7 +10,8 @@ load_dotenv()
 
 common_pantry = ["oil", "salt", "pepper", "sugar", "flour", "water", "butter"]
 TIME_EXPIRATION = 3600
-
+hits=0
+misses=0
 
 redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST", "localhost"),
@@ -55,6 +56,17 @@ def get_cache_by_key(goal,ingredients=None, offset=0):
     data = redis_client.get(key)
     if not data:
         logger.info(f"Cache MISS: {key}")
+        global misses
+        misses +=1
         return None
     logger.info(f"Cache hit: {key}")
+    global hits
+    hits +=1
     return json.loads(data)
+
+def get_metrics():
+    global hits, misses
+    return {"Cache_hits": hits,
+            "Cache_misses": misses,
+            "Hit_Ratio": str(round(hits / hits+misses)*100, 2)+("%")  if hits+misses > 0 else 0
+            }

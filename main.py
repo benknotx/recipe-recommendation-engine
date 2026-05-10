@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query, HTTPException
 import services.spoonacular_service as spoonacular_service
 import schemas
 import services.helper as helper
-
+import services.redis_service as redis_service
 
 app = FastAPI(title="Recipe Recommendation Engine", version="1.0")
 
@@ -15,6 +15,9 @@ def read_root():
 @app.get("/health")
 def health_check():
      return helper.health()
+@app.get("/metrics")
+def get_metrics():
+    return redis_service.get_metrics()
 
 
 
