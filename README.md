@@ -1,17 +1,20 @@
 # Recipe Recommendation Engine
 
-A FastAPI-based backend API that recommends recipes based on user ingredients and dietary goals. This v1 educational project demonstrates practical backend engineering concepts including intelligent caching, scoring algorithms, and third-party API integration.
+A FastAPI-based backend API that recommends recipes based on user ingredients and dietary goals. This educational project demonstrates practical backend engineering concepts including intelligent caching, scoring algorithms, and third-party API integration.
 
 ## 🎯 Features
 
-- Ingredient-based recipe search
-- Dietary goal filtering (high protein, low carb, low fat, balanced)
-- Custom scoring algorithm (ingredient match + nutrition alignment)
+- Ingredient-based recipe recommendation engine
+- Dietary goal filtering (`high_protein`, `low_carb`, `low_fat`, `balanced`)
+- Custom scoring algorithm combining ingredient match and nutrition alignment
+- Bulk nutrition aggregation to eliminate N+1 external API requests
+- Async external API requests using FastAPI + httpx
 - Ingredient substitution suggestions
-- Redis-based caching layer with TTL to minimize external API usage and comply with rate limits
+- Redis-based caching layer with TTL expiration to reduce external API usage and comply with Spoonacular storage limits
 - RESTful API design using query parameters for search endpoints
-- Detailed recipe instructions and nutrition data
-- Structured logging via Loguru for debugging and observability
+- Detailed recipe instructions and nutrition data retrieval
+- Structured logging with Loguru for debugging and observability
+- Health monitoring endpoints for API and Redis availability
 
 ## Quick Example
 
@@ -272,10 +275,12 @@ REDIS_PORT= 6379
 
 - **FastAPI**: Modern web framework for building APIs
 - **Pydantic**: Data validation and parsing
-- **Requests**: HTTP library for API calls
 - **python-dotenv**: Environment variable management
 - **loguru**: Logging library
 - **uvicorn**: ASGI web server
+- **Redis**: Distributed caching layer
+- **httpx**: Async HTTP client
+- **Docker**: local Redis containerization
 
 ## 🔄 Request Flow
 ```
@@ -293,11 +298,12 @@ Client → FastAPI Endpoint → Redis Cache Check
 ## 🧠 Key Design Decisions
 
 - Redis caching used for TTL-based, distributed cache management
+- Async I/O introduced to improve concurrency during external API and Redis operations
 - Designed to comply with third-party API constraints (1-hour storage limit)
-- Chose synchronous requests in V1 for simplicity; async considered for V2 performance improvements
 - Local scoring system used instead of relying solely on external API ranking
 - Separation of concerns via service layer architecture
 - External API calls minimized to respect rate limits
+- Bulk nutrition retrieval implemented to eliminate inefficient N+1 API request patterns
 
 ## ⚠️ API Rate Limit Considerations
 
@@ -309,14 +315,14 @@ This project minimizes usage by:
 - Using bulk endpoints where possible
 
 ## ⚡ Performance Improvements
-- Eliminated redundant external API calls using Redis caching
-- ~~Reduced N+1 request pattern by leveraging bulk endpoints~~
-- Improved response consistency through data normalization
+- Migrated from per-recipe nutrition requests to Spoonacular bulk nutrition endpoint aggregation
+- Added Redis caching to minimize repeated API calls
+- Implemented async I/O using FastAPI + httpx
+- Reduced redundant cache entries through ingredient normalization
 
 
 ## 🚀 Future Enhancements
 
-- Async API calls for improved performance (httpx + asyncio)
 - Docker containerization for reproducible environments
 - Database layer for storing user inputs (not third-party data)
 - Rate limiting to protect API endpoints
@@ -329,8 +335,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 This is a v1 educational project created to demonstrate:
 - RESTful API design with FastAPI
+- Async I/O patterns
 - Third-party API integration
-- Caching strategies and optimization
+- Redis caching strategies
+- Data normalization pipelines
+- Performance optimization
 - Scoring and ranking algorithms
 - Error handling and validation
 - Project structure and best practices

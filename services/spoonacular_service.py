@@ -1,5 +1,4 @@
 from random import random, choice
-import requests
 import os
 import dotenv
 from fastapi import HTTPException
@@ -7,23 +6,25 @@ import services.helper as helper
 import services.redis_service as redis_service
 import services.scoring_service as scoring_service
 from loguru import logger
+import httpx
 dotenv.load_dotenv()
 Spoon_KEY = os.getenv('SPOON_KEY') 
 number_of_recipes = 2
 
-def substitute_ingredient(ingredient):
+async def substitute_ingredient(ingredient):
     url = f"https://api.spoonacular.com/food/ingredients/substitutes?ingredientName={ingredient}&apiKey={Spoon_KEY}"
-    response = requests.get(url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
     if response.status_code == 200:
         data = response.json()
         substitutes = data.get('substitutes', [])
         if data.get('status') == 'failure':
             raise HTTPException(status_code=400, detail=f"No substitutes found for ingredient: {ingredient}")
-        return substitutes
+        return {"substitutes": substitutes}
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
     
-def normalize_recipe_data(recipe_data, goal, ingredients = []):
+async def normalize_recipe_data(recipe_data, goal, ingredients = []):
     normalized_data = []
     for recipe in recipe_data:
         ingredient_score = goal_score = 0
@@ -35,7 +36,7 @@ def normalize_recipe_data(recipe_data, goal, ingredients = []):
             ingredients_list = get_ingredients_list(recipe_data)
             ingredient_score = get_ingredient_score(ingredients, ingredients_list) 
         if not nutrition_data:
-            nutrition_data = get_recipe_data_by_id(recipe_id)
+            nutrition_data = await get_recipe_data_by_id(recipe_id)
             ingredient_score = scoring_service.ingredients_match_score(recipe.get('usedIngredientCount', 0), recipe.get('missedIngredientCount', 0))
         if nutrition_data is not None:
             nutrition_data = nutrition_data
@@ -75,44 +76,50 @@ def normalize_recipe_data(recipe_data, goal, ingredients = []):
 
 
 #api call to spoonacular for the data and then process the data to return the relevant information to the user.
-def get_recipe_data_by_ingredients(ingredients, goal):
+async def get_recipe_data_by_ingredients(ingredients, goal):
     cleaned_list = helper.ingredient_normalization(ingredients)
     ingredients_query = ','.join(cleaned_list)
     recipe_url = f"https://api.spoonacular.com/recipes/findByIngredients?ingredients={ingredients_query}&number={number_of_recipes}&apiKey={Spoon_KEY}"
-    cached_data = redis_service.get_cache_by_key(goal,cleaned_list)
+    cached_data = await redis_service.get_cache_by_key(goal,cleaned_list)
     if cached_data is not None:
         return cached_data
-    response = requests.get(recipe_url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(recipe_url)
+    
     if response.status_code == 200:
         recipe_data = response.json()
         recipe_ids = [recipe['id'] for recipe in recipe_data]
-        nutrition_data = get_nutrition_bulk(recipe_ids)
+        logger.info("post recipe id")
+        nutrition_data = await get_nutrition_bulk(recipe_ids)
+        
         recipe_data = map_nutrition_to_recipe(recipe_data, nutrition_data)
 
 
         key = redis_service.generate_cache_key(goal, cleaned_list)
-        recipe_data = normalize_recipe_data(recipe_data, goal)
+        recipe_data = await normalize_recipe_data(recipe_data, goal)
         logger.info("Fetching from Spoonacular API")
         recipe_data = sorted(recipe_data, key=lambda x: x["overall_score"], reverse=True)
-        redis_service.add_to_cache(key, recipe_data)
+        await redis_service.add_to_cache(key, recipe_data)
         return recipe_data[:3]
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
     
 #call the spoonacular api to get the recipe nutrition data by id
-def get_recipe_data_by_id(recipe_id):
+async def get_recipe_data_by_id(recipe_id):
     logger.info("Fetching recipe by individual ID ")
     url = f"https://api.spoonacular.com/recipes/{recipe_id}/nutritionWidget.json?apiKey={Spoon_KEY}"
-    response = requests.get(url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
     if response.status_code == 200:
         data = response.json()
         return data
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
     
-def get_nutrition_bulk(recipe_ids: list[int]):
+async def get_nutrition_bulk(recipe_ids: list[int]):
     bulk_url = f"https://api.spoonacular.com/recipes/informationBulk?ids={','.join(map(str,recipe_ids))}&includeNutrition=true&apiKey={Spoon_KEY}"
-    response = requests.get(bulk_url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(bulk_url)
     if response.status_code ==200:
         data = response.json()
         return data
@@ -126,13 +133,10 @@ def map_nutrition_to_recipe(recipe_data, nutrition_data):
         recipe["nutrition"] = nutrition_map.get(recipe_id)
     return recipe_data
 
-
-
-    
-
-def get_recipe_instructions_by_id(recipe_id):
+async def get_recipe_instructions_by_id(recipe_id):
     url = f"https://api.spoonacular.com/recipes/{recipe_id}/information?includeNutrition=false&apiKey={Spoon_KEY}"
-    response = requests.get(url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
     if response.status_code == 200:
         data = response.json()
         instructions = data.get('instructions', '')
@@ -147,22 +151,22 @@ def get_recipe_instructions_by_id(recipe_id):
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
     
-
-def get_recipe_by_goal(ingredients, goal = "balanced"):
+async def get_recipe_by_goal(ingredients, goal = "balanced"):
     goal_param = helper.goal_normalization_for_complex(goal)
     offset = choice([0, 5, 10, 15, 20, 25, 30])
     url = f"https://api.spoonacular.com/recipes/complexSearch?{goal_param}&number={number_of_recipes}&offset={offset}&addRecipeNutrition=true&addRecipeInstructions=true&apiKey={Spoon_KEY}"
-    cached_data = redis_service.get_cache_by_key(goal, offset=offset)
+    cached_data = await redis_service.get_cache_by_key(goal, offset=offset)
     if cached_data is not None:
         return cached_data
-    response = requests.get(url)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
     if response.status_code == 200:
         data = response.json()
         key = redis_service.generate_cache_key(goal, offset=offset)
-        recipe_data = normalize_recipe_data(data.get('results', []), goal, ingredients)
+        recipe_data = await normalize_recipe_data(data.get('results', []), goal, ingredients)
         logger.info("Fetching from Spoonacular API")
         recipe_data = sorted(recipe_data, key=lambda x: x["overall_score"], reverse=True)
-        redis_service.add_to_cache(key, recipe_data)
+        await redis_service.add_to_cache(key, recipe_data)
         return recipe_data[:3]
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")

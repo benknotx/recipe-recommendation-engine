@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 from services.redis_service import redis_client
-import requests
 import os
 import dotenv
 from loguru import logger
+import httpx
 dotenv.load_dotenv()
 Spoon_KEY = os.getenv('SPOON_KEY')
 
@@ -35,18 +35,19 @@ def goal_normalization_for_complex(goal):
     return goal_mapping.get(goal, None)
 
 
-def health():
+async def health():
     status = {"API": "OK",
               "REDIS": "OK",
               "SPOONACULAR": "OK"  }
     try: 
-        redis_client.ping()
+        await redis_client.ping()
         status["REDIS"] = "OK"
     except Exception as e:
         logger.error(f"Redis health check failed: {e}")
         status["REDIS"] = "DOWN"
     try:
-        response = requests.get(
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
             URL,
             params={
                 "apiKey": Spoon_KEY,

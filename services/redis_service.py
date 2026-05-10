@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from services import helper
 from loguru import logger
-import redis
+import redis.asyncio as redis
 import json
 import os
 from dotenv import load_dotenv
@@ -10,8 +10,8 @@ load_dotenv()
 
 common_pantry = ["oil", "salt", "pepper", "sugar", "flour", "water", "butter"]
 TIME_EXPIRATION = 3600
-hits=0
-misses=0
+HITS=0
+MISSES=0
 
 redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST", "localhost"),
@@ -41,8 +41,8 @@ def generate_cache_key(goal, ingredients=None, offset=0):
     return key
   
 
-def add_to_cache(key, recipe_data):
-    redis_client.setex(
+async def add_to_cache(key, recipe_data):
+    await redis_client.setex(
         key,
         TIME_EXPIRATION,
         json.dumps(recipe_data)
@@ -50,23 +50,22 @@ def add_to_cache(key, recipe_data):
    
 
 
-def get_cache_by_key(goal,ingredients=None, offset=0):
+async def get_cache_by_key(goal,ingredients=None, offset=0):
     key = generate_cache_key(goal,ingredients, offset)
-    logger.info(f"{key}")
-    data = redis_client.get(key)
+    data = await redis_client.get(key)
     if not data:
         logger.info(f"Cache MISS: {key}")
-        global misses
-        misses +=1
+        global MISSES
+        MISSES +=1
         return None
     logger.info(f"Cache hit: {key}")
-    global hits
-    hits +=1
+    global HITS
+    HITS +=1
     return json.loads(data)
 
 def get_metrics():
-    global hits, misses
-    return {"Cache_hits": hits,
-            "Cache_misses": misses,
-            "Hit_Ratio": str(round(hits / hits+misses)*100, 2)+("%")  if hits+misses > 0 else 0
+    global HITS, MISSES
+    return {"Cache_hits": HITS,
+            "Cache_misses": MISSES,
+            "Hit_Ratio": str(round( HITS / (HITS+MISSES))*100, 2)+("%")  if HITS > 0 and MISSES >0 else 0
             }
