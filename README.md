@@ -120,6 +120,18 @@ curl http://localhost:8000/health
 }
 ```
 
+**GET** `/metrics`
+```bash
+curl https://localhost:8000/metrics
+```
+**Response:**
+```json
+{
+  "Cache_hits": 20,
+  "Cache_misses": 15,
+  "Hit_Ratio": "57.14%"
+}
+```
 ### Get Recipes by Ingredients
 
 **GET** /recipes/recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=broccoli`
@@ -298,11 +310,9 @@ This project minimizes usage by:
 
 ## ⚡ Performance Improvements
 - Eliminated redundant external API calls using Redis caching
-- Reduced N+1 request pattern by leveraging bulk endpoints
+- ~~Reduced N+1 request pattern by leveraging bulk endpoints~~
 - Improved response consistency through data normalization
 
-Future improvement:
-- Replace per-recipe nutrition calls with bulk nutrition endpoints
 
 ## 🚀 Future Enhancements
 

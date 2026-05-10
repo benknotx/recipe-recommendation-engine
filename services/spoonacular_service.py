@@ -23,7 +23,7 @@ def substitute_ingredient(ingredient):
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
     
-def normalize_recipie_data(recipe_data, goal, ingredients = []):
+def normalize_recipe_data(recipe_data, goal, ingredients = []):
     normalized_data = []
     for recipe in recipe_data:
         ingredient_score = goal_score = 0
@@ -78,15 +78,20 @@ def normalize_recipie_data(recipe_data, goal, ingredients = []):
 def get_recipe_data_by_ingredients(ingredients, goal):
     cleaned_list = helper.ingredient_normalization(ingredients)
     ingredients_query = ','.join(cleaned_list)
-    url = f"https://api.spoonacular.com/recipes/findByIngredients?ingredients={ingredients_query}&number={number_of_recipes}&apiKey={Spoon_KEY}"
+    recipe_url = f"https://api.spoonacular.com/recipes/findByIngredients?ingredients={ingredients_query}&number={number_of_recipes}&apiKey={Spoon_KEY}"
     cached_data = redis_service.get_cache_by_key(goal,cleaned_list)
     if cached_data is not None:
         return cached_data
-    response = requests.get(url)
+    response = requests.get(recipe_url)
     if response.status_code == 200:
-        recipie_data = response.json()
+        recipe_data = response.json()
+        recipe_ids = [recipe['id'] for recipe in recipe_data]
+        nutrition_data = get_nutrition_bulk(recipe_ids)
+        recipe_data = map_nutrition_to_recipe(recipe_data, nutrition_data)
+
+
         key = redis_service.generate_cache_key(goal, cleaned_list)
-        recipe_data = normalize_recipie_data(recipie_data, goal)
+        recipe_data = normalize_recipe_data(recipe_data, goal)
         logger.info("Fetching from Spoonacular API")
         recipe_data = sorted(recipe_data, key=lambda x: x["overall_score"], reverse=True)
         redis_service.add_to_cache(key, recipe_data)
@@ -96,6 +101,7 @@ def get_recipe_data_by_ingredients(ingredients, goal):
     
 #call the spoonacular api to get the recipe nutrition data by id
 def get_recipe_data_by_id(recipe_id):
+    logger.info("Fetching recipe by individual ID ")
     url = f"https://api.spoonacular.com/recipes/{recipe_id}/nutritionWidget.json?apiKey={Spoon_KEY}"
     response = requests.get(url)
     if response.status_code == 200:
@@ -103,6 +109,25 @@ def get_recipe_data_by_id(recipe_id):
         return data
     else:
         raise HTTPException(status_code=response.status_code, detail=f"Error: {response.text}")
+    
+def get_nutrition_bulk(recipe_ids: list[int]):
+    bulk_url = f"https://api.spoonacular.com/recipes/informationBulk?ids={','.join(map(str,recipe_ids))}&includeNutrition=true&apiKey={Spoon_KEY}"
+    response = requests.get(bulk_url)
+    if response.status_code ==200:
+        data = response.json()
+        return data
+    else:
+        raise HTTPException(status_code=response.status_code, detail=f"Error: {response.txt}")
+
+def map_nutrition_to_recipe(recipe_data, nutrition_data):
+    nutrition_map= { item['id']: item  for item in nutrition_data}
+    for recipe in recipe_data:
+        recipe_id = recipe["id"]
+        recipe["nutrition"] = nutrition_map.get(recipe_id)
+    return recipe_data
+
+
+
     
 
 def get_recipe_instructions_by_id(recipe_id):
@@ -134,7 +159,7 @@ def get_recipe_by_goal(ingredients, goal = "balanced"):
     if response.status_code == 200:
         data = response.json()
         key = redis_service.generate_cache_key(goal, offset=offset)
-        recipe_data = normalize_recipie_data(data.get('results', []), goal, ingredients)
+        recipe_data = normalize_recipe_data(data.get('results', []), goal, ingredients)
         logger.info("Fetching from Spoonacular API")
         recipe_data = sorted(recipe_data, key=lambda x: x["overall_score"], reverse=True)
         redis_service.add_to_cache(key, recipe_data)

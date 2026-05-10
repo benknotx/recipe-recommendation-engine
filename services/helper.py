@@ -22,8 +22,8 @@ def goal_normalization_for_complex(goal):
     # high protein is considered to be ~20% of daily 2000 calories from protein
     # that is about 100 grams of protein per day divide that by 3 meals and we get around 33 grams of protein per meal
         "high_protein": "minProtein=33",
-    # low carb is considered to be 130 grams of carbs per day divide that by 3 meals and we get around 43 grams of carbs per meal    
-        "low_carb": "maxCarbs=40",
+    # low carb is considered to be 65 grams of carbs per day divide that by 3 meals and we get around 20 grams of carbs per meal    
+        "low_carb": "maxCarbs=20",
     # lowfat is considered to be 44-78 grams per day divide that by 3 meals and we get around 15-25 grams of fat per meal    
         "low_fat": "maxFat=20",
     # a balanced meal is conidered to be about 40-40-30 split by percent, 
