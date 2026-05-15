@@ -2,19 +2,32 @@
 
 A FastAPI-based backend API that recommends recipes based on user ingredients and dietary goals. This educational project demonstrates practical backend engineering concepts including intelligent caching, scoring algorithms, and third-party API integration.
 
+## 🛠️ Tech Stack
+
+- Python 3.12
+- FastAPI
+- Redis
+- httpx
+- SlowAPI
+- Loguru
+- Pydantic
+- Docker (Redis container)
+
+
 ## 🎯 Features
 
 - Ingredient-based recipe recommendation engine
 - Dietary goal filtering (`high_protein`, `low_carb`, `low_fat`, `balanced`)
-- Custom scoring algorithm combining ingredient match and nutrition alignment
-- Bulk nutrition aggregation to eliminate N+1 external API requests
-- Async external API requests using FastAPI + httpx
-- Ingredient substitution suggestions
-- Redis-based caching layer with TTL expiration to reduce external API usage and comply with Spoonacular storage limits
+- Custom scoring algorithm combining ingredient matching and macronutrient alignment
+- Bulk nutrition aggregation to eliminate N+1 external API request patterns
+- Asynchronous API architecture using FastAPI + httpx
+- Shared async dependency management using FastAPI lifespan context
+- Redis-based caching with TTL expiration to reduce external API usage and comply with Spoonacular storage limits
 - RESTful API design using query parameters for search endpoints
-- Detailed recipe instructions and nutrition data retrieval
-- Structured logging with Loguru for debugging and observability
-- Health monitoring endpoints for API and Redis availability
+- Ingredient substitution suggestions
+- Structured logging and observability using Loguru
+- Health monitoring and cache metrics endpoints
+- Rate limiting using SlowAPI middleware
 
 ## Quick Example
 
@@ -37,7 +50,7 @@ GET recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=b
 
 ## 📋 Prerequisites
 
-- Python 3.8+
+- Python 3.12+
 - [Spoonacular API Key](https://spoonacular.com/food-api/)
 
 ## 🚀 Getting Started
@@ -76,14 +89,23 @@ pip install -r requirements.txt
 ```env
 SPOON_KEY=your_api_key_here
 ```
+### 5. Start Redis
+Run Redis locally with Docker:
+```bash
+docker run -d -p 6379:6379 redis
+```
 
-### 5. Run the Application
+### 6. Run the Application
 
 ```bash
 uvicorn main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`
+FastAPI automatically generates interactive API documentation.
+Available at:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
 ## 📚 API Endpoints
 
@@ -125,7 +147,7 @@ curl http://localhost:8000/health
 
 **GET** `/metrics`
 ```bash
-curl https://localhost:8000/metrics
+curl http://localhost:8000/metrics
 ```
 **Response:**
 ```json
@@ -137,7 +159,7 @@ curl https://localhost:8000/metrics
 ```
 ### Get Recipes by Ingredients
 
-**GET** /recipes/recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=broccoli`
+**GET** /recipes?goal=high_protein&ingredients=chicken&ingredients=rice&ingredients=broccoli`
 
 Find recipes based on available ingredients and dietary goal.
 
@@ -168,11 +190,31 @@ Find recipes based on available ingredients and dietary goal.
 
 ### Get Recipes by Goal
 
-**GET** `/recipes?goal=low_carb`
+**GET** `/recipes/goal?goal=low_carb`
 
 Get recipes filtered by dietary goal (regardless of ingredients).
 
 **Response:** Same as `/recipes` endpoint
+
+### Get Recipe Instructions
+
+**GET** `/recipes/{id}`
+
+Get detailed cooking instructions and information for a specific recipe.
+
+**Path Parameters:**
+- `id` (required): Recipe ID from a previous request
+
+**Response:**
+```json
+{
+  "id": 123456,
+  "title": "Grilled Chicken Pasta",
+  "servings": 4,
+  "ingredients": "4 Chicken Brea..",
+  "instructions": "Step 1: Preheat oven..."
+}
+```
 
 ### Get Ingredient Substitutes
 
@@ -217,10 +259,15 @@ Get detailed instructions and ingredients for a specific recipe.
 
 ## 🧮 Scoring Algorithm
 
-Recipes are ranked using:
-- **Ingredient Match (60%)** – how many provided ingredients are used
-- **Goal Alignment (40%)** – how well the recipe matches the selected dietary goal
-Weights are configurable and can be tuned based on user preference or feedback.
+Recipes are ranked using a composite scoring system combining:
+
+- Ingredient Match Score — measures how effectively a recipe utilizes user-provided ingredients
+- Goal Alignment Score — evaluates macronutrient distribution against the selected dietary goal
+The scoring system prioritizes recipes that:
+- maximize ingredient usage
+- align with nutritional goals
+- reduce unnecessary ingredient mismatch
+Final recipe ranking uses score-based sorting after normalization.
 
 ### Overall Score
 Final score combines both components to rank recipes by relevance and suitability.
@@ -229,14 +276,26 @@ If no ingredients are provided:
 - Overall score is based entirely on goal alignment
 - Recipe ranking uses O(n log n) sorting after scoring.
 
+## 📈 Observability
+
+The application includes lightweight observability tooling:
+
+- Structured request and debugging logs via Loguru
+- /health endpoint for dependency health checks
+- /metrics endpoint exposing cache hit/miss statistics
+- Redis connectivity monitoring
+- External API availability verification
+Note: Metrics reset on application restart.
+
 ## 💾 Caching Strategy
 
 The API uses Redis-based caching to optimize performance and manage external API rate limits.
 
-- **Cache Backend**: Redis (in-memory data store)
-- **Cache Expiration**: 1 hour (3600 seconds) to comply with Spoonacular API terms
-- **Key Strategy**: Normalized ingredient lists + dietary goal
-- **Filtering**: Common pantry items (oil, salt, pepper, sugar, flour, water, butter) are excluded from cache keys to improve hit rates
+- Cache Backend: Redis (in-memory data store)
+- Cache Expiration: 1 hour (3600 seconds) to comply with Spoonacular API terms
+- Key Strategy: Normalized ingredient lists + dietary goal
+- Ingredient normalization improves cache hit rates by removing duplicate/common pantry variations
+- Shared Redis client managed through FastAPI lifespan context
 
 ### Cache Behavior
 - Cache hits significantly reduce API calls to Spoonacular
@@ -270,17 +329,6 @@ SPOON_HOST=api.spoonacular.com
 REDIS_HOST=localhost
 REDIS_PORT= 6379
 ```
-
-## 📊 Dependencies
-
-- **FastAPI**: Modern web framework for building APIs
-- **Pydantic**: Data validation and parsing
-- **python-dotenv**: Environment variable management
-- **loguru**: Logging library
-- **uvicorn**: ASGI web server
-- **Redis**: Distributed caching layer
-- **httpx**: Async HTTP client
-- **Docker**: local Redis containerization
 
 ## 🔄 Request Flow
 ```
@@ -320,12 +368,27 @@ This project minimizes usage by:
 - Implemented async I/O using FastAPI + httpx
 - Reduced redundant cache entries through ingredient normalization
 
+## 🏗️ Engineering Evolution
+
+This project evolved through multiple backend architecture refactors:
+
+- Started with synchronous HTTP requests and local in-memory caching
+- Refactored to asynchronous I/O using shared httpx.AsyncClient
+- Migrated caching from Python dictionaries to Redis with TTL expiration
+- Introduced FastAPI lifespan context management for shared dependency lifecycle handling
+- Eliminated inefficient N+1 nutrition API request patterns using Spoonacular bulk endpoints
+- Added rate limiting, metrics, and structured observability tooling
+
+
 
 ## 🚀 Future Enhancements
 
-- Docker containerization for reproducible environments
-- Database layer for storing user inputs (not third-party data)
-- Rate limiting to protect API endpoints
+- Full application Dockerization
+- Automated unit and integration testing
+- CI/CD pipeline integration
+- Persistent metrics and monitoring dashboards
+- User authentication and saved recipe preferences
+- Database layer for user-generated data
 
 ## 📝 License
 
@@ -333,15 +396,17 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🎓 Educational Purpose
 
-This is a v1 educational project created to demonstrate:
-- RESTful API design with FastAPI
-- Async I/O patterns
-- Third-party API integration
-- Redis caching strategies
-- Data normalization pipelines
-- Performance optimization
-- Scoring and ranking algorithms
-- Error handling and validation
-- Project structure and best practices
+This project was built to demonstrate practical backend engineering concepts including:
 
-Designed to demonstrate practical backend engineering concepts and real-world API constraints.
+- RESTful API architecture with FastAPI
+- Asynchronous I/O and concurrency patterns
+- Shared dependency lifecycle management
+- External API integration and optimization
+- Redis caching strategies and TTL management
+- N+1 request elimination through bulk aggregation
+- Rate limiting and API protection
+- Data normalization and scoring pipelines
+- Structured logging and observability
+- Service-layer architecture and separation of concerns
+
+The project intentionally focuses on real-world API constraints, performance optimization, and scalable backend design patterns.

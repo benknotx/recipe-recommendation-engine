@@ -3,7 +3,7 @@ from services import helper
 from loguru import logger
 import redis.asyncio as redis
 import json
-import os
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -13,12 +13,7 @@ TIME_EXPIRATION = 3600
 HITS=0
 MISSES=0
 
-redis_client = redis.Redis(
-    host=os.getenv("REDIS_HOST", "localhost"),
-    port=int(os.getenv("REDIS_PORT")),
-    db=0,
-    decode_responses=True
-)
+
 
 def clean_filter_ingredients(ingredients):
     cleaned_list = helper.ingredient_normalization(ingredients)
@@ -41,8 +36,8 @@ def generate_cache_key(goal, ingredients=None, offset=0):
     return key
   
 
-async def add_to_cache(key, recipe_data):
-    await redis_client.setex(
+async def add_to_cache(cache, key, recipe_data):
+    await cache.setex(
         key,
         TIME_EXPIRATION,
         json.dumps(recipe_data)
@@ -50,9 +45,9 @@ async def add_to_cache(key, recipe_data):
    
 
 
-async def get_cache_by_key(goal,ingredients=None, offset=0):
-    key = generate_cache_key(goal,ingredients, offset)
-    data = await redis_client.get(key)
+async def get_cache_by_key(cache, goal, ingredients=None, offset=0):
+    key = generate_cache_key(goal, ingredients, offset)
+    data = await cache.get(key)
     if not data:
         logger.info(f"Cache MISS: {key}")
         global MISSES
