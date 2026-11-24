@@ -1,0 +1,14 @@
+[project]
+name = "recipe-recommendation-engine"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.165.0",
+    "httpx>=0.28.1",
+    "loguru>=0.8.0",
+    "pydantic>=2.14.4",
+    "python-dotenv>=1.2.4",
+    "redis>=8.2.0",
+    "slowapi>=0.1.10",
+    "uvicorn>=0.54.0",
+]
